@@ -51,8 +51,6 @@
 #define SSL_IMPORT extern
 #endif
 
-SEC_BEGIN_PROTOS
-
 /* constant table enumerating all implemented SSL 2 and 3 cipher suites. */
 SSL_IMPORT const PRUint16 SSL_ImplementedCiphers[];
 
@@ -78,6 +76,9 @@ typedef struct SSL3StatisticsStr {
     long hch_sid_cache_misses;
     long hch_sid_cache_not_ok;
 } SSL3Statistics;
+
+SEC_BEGIN_PROTOS
+
 
 /*
 ** Imports fd into SSL, returning a new socket.  Copies SSL configuration
@@ -297,6 +298,17 @@ SSL_IMPORT SECStatus SSL_ConfigMPServerSIDCache(int      maxCacheEntries,
 				                PRUint32 timeout,
 			       	                PRUint32 ssl3_timeout, 
 		                          const char *   directory);
+
+/* Get and set the configured maximum number of mutexes used for the 
+** server's store of SSL sessions.  This value is used by the server 
+** session ID cache initialization functions shown above.  Note that on 
+** some platforms, these mutexes are actually implemented with POSIX 
+** semaphores, or with unnamed pipes.  The default value varies by platform.
+** An attempt to set a too-low maximum will return an error and the 
+** configured value will not be changed.
+*/
+SSL_IMPORT PRUint32  SSL_GetMaxServerCacheLocks(void);
+SSL_IMPORT SECStatus SSL_SetMaxServerCacheLocks(PRUint32 maxLocks);
 
 /* environment variable set by SSL_ConfigMPServerSIDCache, and queried by
  * SSL_InheritMPServerSIDCache when envString is NULL.
