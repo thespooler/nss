@@ -13,7 +13,7 @@
 # 
 # The Initial Developer of the Original Code is Netscape
 # Communications Corporation.  Portions created by Netscape are 
-# Copyright (C) 1994-2000 Netscape Communications Corporation.  All
+# Copyright (C) 2002 Netscape Communications Corporation.  All
 # Rights Reserved.
 # 
 # Contributor(s):
@@ -30,52 +30,26 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-# Config stuff for AIX.
+# On HP-UX 10.30 and 11.x, the default implementation strategy is
+# pthreads.  Classic nspr and pthreads-user are also available.
 #
-include $(CORE_DEPTH)/coreconf/UNIX.mk
 
-#
-# There are two implementation strategies available on AIX:
-# pthreads, and pthreads-user.  The default is pthreads.
-# In both strategies, we need to use pthread_user.c, instead of
-# aix.c.  The fact that aix.c is never used is somewhat strange.
-# 
-# So we need to do the following:
-# - Default (PTHREADS_USER not defined in the environment or on
-#   the command line):
-#   Set PTHREADS_USER=1, USE_PTHREADS=1
-# - PTHREADS_USER=1 set in the environment or on the command line:
-#   Do nothing.
-#
-ifeq ($(PTHREADS_USER),1)
-	USE_PTHREADS =            # just to be safe
-	IMPL_STRATEGY = _PTH_USER
-else
-	USE_PTHREADS = 1
-	PTHREADS_USER = 1
+ifeq ($(OS_RELEASE),B.11.22)
+OS_CFLAGS		+= -DHPUX10
+DEFAULT_IMPL_STRATEGY = _PTH
 endif
 
-DEFAULT_COMPILER = xlc_r
+#
+# To use the true pthread (kernel thread) library on 10.30 and
+# 11.x, we should define _POSIX_C_SOURCE to be 199506L.
+# The _REENTRANT macro is deprecated.
+#
 
-CC		= xlc_r
-CCC		= xlC_r
-
-CPU_ARCH	= rs6000
-
-RANLIB		= ranlib
-
-OS_CFLAGS	= -DAIX -DSYSV
-
-AIX_WRAP	= $(DIST)/lib/aixwrap.o
-AIX_TMP		= $(OBJDIR)/_aix_tmp.o
-OS_LIBS		+= -lsvld
-ifdef MAPFILE
-EXPORT_RULES = -bexport:$(MAPFILE)
-endif
-PROCESS_MAP_FILE = grep -v ';+' $(LIBRARY_NAME).def | grep -v ';-' | \
-                sed -e 's; DATA ;;' -e 's,;;,,' -e 's,;.*,,' > $@
-
-ifdef BUILD_OPT
-        OPTIMIZER += -qmaxmem=-1
+ifdef USE_PTHREADS
+	OS_CFLAGS	+= -D_POSIX_C_SOURCE=199506L
 endif
 
+#
+# Config stuff for HP-UXB.11.x.
+#
+include $(CORE_DEPTH)/coreconf/HP-UXB.11.mk
