@@ -49,6 +49,9 @@ endif
 # XP_OS2 is strictly for OS2 only
 XP_DEFINE  += -DXP_PC=1  -DXP_OS2=1
 
+# Override prefix
+LIB_PREFIX  = $(NULL)
+
 # Override suffix in suffix.mk
 LIB_SUFFIX  = lib
 DLL_SUFFIX  = dll
@@ -224,3 +227,24 @@ DEFINES += -DXP_OS2
 define MAKE_OBJDIR
 if test ! -d $(@D); then rm -rf $(@D); $(NSINSTALL) -D $(@D); fi
 endef
+
+#
+# override the definition of DLL_PREFIX in prefix.mk
+#
+
+ifndef DLL_PREFIX
+    DLL_PREFIX = $(NULL)
+endif
+
+#
+# override the TARGETS defined in ruleset.mk, adding IMPORT_LIBRARY
+#
+ifndef TARGETS
+    TARGETS = $(LIBRARY) $(SHARED_LIBRARY) $(IMPORT_LIBRARY) $(PROGRAM)
+endif
+
+
+ifdef LIBRARY_NAME
+    IMPORT_LIBRARY = $(OBJDIR)/$(LIBRARY_NAME)$(LIBRARY_VERSION)$(JDK_DEBUG_SUFFIX).lib
+endif
+

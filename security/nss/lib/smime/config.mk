@@ -31,19 +31,9 @@
 # GPL.
 #
 
-#
-#  Override TARGETS variable so that only static libraries
-#  are specifed as dependencies within rules.mk.
-#
-
-#TARGETS        = $(LIBRARY)
-#SHARED_LIBRARY =
-#IMPORT_LIBRARY =
-#PROGRAM        =
-
 RELEASE_LIBS = $(TARGETS)
 
-ifeq ($(OS_ARCH), WINNT)
+ifeq (,$(filter-out WIN%,$(OS_TARGET)))
 
 # don't want the 32 in the shared library name
 SHARED_LIBRARY = $(OBJDIR)/$(LIBRARY_NAME)$(LIBRARY_VERSION).dll
@@ -68,6 +58,10 @@ EXTRA_SHARED_LIBS += \
 	-lplds4 \
 	-lnspr4 \
 	$(NULL)
+
+ifeq ($(OS_ARCH), Darwin)
+EXTRA_SHARED_LIBS += -dylib_file @executable_path/libsoftokn3.dylib:$(DIST)/lib/libsoftokn3.dylib
+endif
 
 endif
 
