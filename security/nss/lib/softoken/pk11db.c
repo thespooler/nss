@@ -50,6 +50,7 @@ secmod_parseTokenFlags(char *tmp, pk11_token_parameters *parsed) {
     parsed->noKeyDB = pk11_argHasFlag("flags","noKeyDB",tmp);
     parsed->forceOpen = pk11_argHasFlag("flags","forceOpen",tmp);
     parsed->pwRequired = pk11_argHasFlag("flags","passwordRequired",tmp);
+    parsed->optimizeSpace = pk11_argHasFlag("flags","optimizeSpace",tmp);
     return;
 }
 
@@ -61,6 +62,7 @@ secmod_parseFlags(char *tmp, pk11_parameters *parsed) {
     parsed->noCertDB = pk11_argHasFlag("flags","noCertDB",tmp);
     parsed->forceOpen = pk11_argHasFlag("flags","forceOpen",tmp);
     parsed->pwRequired = pk11_argHasFlag("flags","passwordRequired",tmp);
+    parsed->optimizeSpace = pk11_argHasFlag("flags","optimizeSpace",tmp);
     return;
 }
 
@@ -191,6 +193,8 @@ secmod_parseParameters(char *param, pk11_parameters *parsed, PRBool isFIPS)
 	tokens[index].noKeyDB = parsed->noCertDB;
 	tokens[index].forceOpen = parsed->forceOpen;
 	tokens[index].pwRequired = parsed->pwRequired;
+	tokens[index].optimizeSpace = parsed->optimizeSpace;
+	tokens[0].optimizeSpace = parsed->optimizeSpace;
 	certPrefix = NULL;
 	keyPrefix = NULL;
 	if (isFIPS) {
@@ -723,7 +727,7 @@ secmod_addEscape(const char *string, char quote)
 }
 
 #define SECMOD_STEP 10
-#define PK11_DEFAULT_INTERNAL_INIT "library= name=\"NSS Internal PKCS #11 Module\" parameters=\"%s\" NSS=\"Flags=internal,critical trustOrder=0 cipherOrder=100 slotParams=(1={%s askpw=any timeout=30})\""
+#define PK11_DEFAULT_INTERNAL_INIT "library= name=\"NSS Internal PKCS #11 Module\" parameters=\"%s\" NSS=\"Flags=internal,critical trustOrder=75 cipherOrder=100 slotParams=(1={%s askpw=any timeout=30})\""
 /*
  * Read all the existing modules in
  */

@@ -176,14 +176,17 @@ nssSlot_Destroy
   NSSSlot *slot
 )
 {
+    if (slot) {
+	PR_AtomicDecrement(&slot->base.refCount);
+	if (slot->base.refCount == 0) {
+	    PZ_DestroyLock(slot->base.lock);
 #ifdef PURE_STAN_BUILD
-    PR_AtomicDecrement(&slot->base.refCount);
-    if (slot->base.refCount == 0) {
-	nssToken_Destroy(slot->token);
-	nssModule_DestroyFromSlot(slot->module, slot);
-	return nssArena_Destroy(slot->base.arena);
-    }
+	    nssToken_Destroy(slot->token);
+	    nssModule_DestroyFromSlot(slot->module, slot);
 #endif
+	    return nssArena_Destroy(slot->base.arena);
+	}
+    }
     return PR_SUCCESS;
 }
 
@@ -291,7 +294,16 @@ nssSlot_IsTokenPresent
 	    session->handle = CK_INVALID_SESSION;
 	}
 	nssSession_ExitMonitor(session);
+#ifdef NSS_3_4_CODE
+	if (slot->token->base.name[0] != 0) {
+	    /* notify the high-level cache that the token is removed */
+	    slot->token->base.name[0] = 0; /* XXX */
+	    nssToken_NotifyCertsNotVisible(slot->token);
+	}
+#endif
 	slot->token->base.name[0] = 0; /* XXX */
+	/* clear the token cache */
+	nssToken_Remove(slot->token);
 	return PR_FALSE;
 #ifdef PURE_STAN_CODE
     } else if (!slot->token) {
@@ -319,6 +331,12 @@ nssSlot_IsTokenPresent
     if (session->handle != CK_INVALID_SESSION) {
 	return PR_TRUE;
     } else {
+	/* the token has been removed, and reinserted, invalidate all the old
+	 * information we had on this token */
+#ifdef NSS_3_4_CODE
+	nssToken_NotifyCertsNotVisible(slot->token);
+#endif /* NSS_3_4_CODE */
+	nssToken_Remove(slot->token);
 	/* token has been removed, need to refresh with new session */
 	nssrv = nssSlot_Refresh(slot);
 	if (nssrv != PR_SUCCESS) {

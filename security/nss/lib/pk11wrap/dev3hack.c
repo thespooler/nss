@@ -43,12 +43,13 @@ static const char CVS_ID[] = "@(#) $RCSfile$ $Revision$ $Date$ $Name$";
 #include "pkit.h"
 #endif /* PKIT_H */
 
-#ifndef DEVT_H
-#include "devt.h"
-#endif /* DEVT_H */
+#ifndef DEVM_H
+#include "devm.h"
+#endif /* DEVM_H */
 
 #include "pki3hack.h"
 #include "dev3hack.h"
+#include "pkim.h"
 
 #ifndef BASE_H
 #include "base.h"
@@ -117,11 +118,19 @@ static NSSSlot *
 nssSlot_CreateFromPK11SlotInfo(NSSTrustDomain *td, PK11SlotInfo *nss3slot)
 {
     NSSSlot *rvSlot;
-    rvSlot = nss_ZNEW(td->arena, NSSSlot);
+    NSSArena *arena;
+    arena = nssArena_Create();
+    if (!arena) {
+	return NULL;
+    }
+    rvSlot = nss_ZNEW(arena, NSSSlot);
     if (!rvSlot) {
+	nssArena_Destroy(arena);
 	return NULL;
     }
     rvSlot->base.refCount = 1;
+    rvSlot->base.lock = PZ_NewLock(nssILockOther);
+    rvSlot->base.arena = arena;
     rvSlot->pk11slot = nss3slot;
     rvSlot->epv = nss3slot->functionList;
     rvSlot->slotID = nss3slot->slotID;
@@ -134,24 +143,40 @@ NSS_IMPLEMENT NSSToken *
 nssToken_CreateFromPK11SlotInfo(NSSTrustDomain *td, PK11SlotInfo *nss3slot)
 {
     NSSToken *rvToken;
-    rvToken = nss_ZNEW(td->arena, NSSToken);
+    NSSArena *arena;
+    arena = nssArena_Create();
+    if (!arena) {
+	return NULL;
+    }
+    rvToken = nss_ZNEW(arena, NSSToken);
     if (!rvToken) {
+	nssArena_Destroy(arena);
 	return NULL;
     }
     rvToken->base.refCount = 1;
+    rvToken->base.lock = PZ_NewLock(nssILockOther);
+    rvToken->base.arena = arena;
     rvToken->pk11slot = nss3slot;
     rvToken->epv = nss3slot->functionList;
     rvToken->defaultSession = nssSession_ImportNSS3Session(td->arena,
                                                        nss3slot->session,
                                                        nss3slot->sessionLock,
                                                        nss3slot->defRWSession);
+    /* The above test was used in 3.4, for this cache have it always on */
+    if (!PK11_IsInternal(nss3slot) && PK11_IsHW(nss3slot)) {
+	rvToken->cache = nssTokenObjectCache_Create(rvToken, 
+	                                            PR_TRUE, PR_TRUE, PR_TRUE);
+	if (!rvToken->cache) {
+	    nssArena_Destroy(arena);
+	    return (NSSToken *)NULL;
+	}
+    }
     rvToken->trustDomain = td;
     /* Grab the token name from the PKCS#11 fixed-length buffer */
     rvToken->base.name = nssUTF8_Duplicate(nss3slot->token_name,td->arena);
     rvToken->slot = nssSlot_CreateFromPK11SlotInfo(td, nss3slot);
     rvToken->slot->token = rvToken;
     rvToken->defaultSession->slot = rvToken->slot;
-    rvToken->base.arena = td->arena;
     return rvToken;
 }
 
@@ -195,8 +220,7 @@ nssToken_Refresh(NSSToken *token)
                                                        nss3slot->session,
                                                        nss3slot->sessionLock,
                                                        nss3slot->defRWSession);
-    nssToken_DestroyCertList(token, PR_TRUE);
-    return nssToken_LoadCerts(token);
+    return PR_SUCCESS;
 }
 
 NSS_IMPLEMENT PRStatus
@@ -206,8 +230,16 @@ nssSlot_Refresh
 )
 {
     PK11SlotInfo *nss3slot = slot->pk11slot;
+    PRBool doit = PR_FALSE;
+    if (slot->token->base.name[0] == 0) {
+	doit = PR_TRUE;
+    }
     if (PK11_InitToken(nss3slot, PR_FALSE) != SECSuccess) {
 	return PR_FAILURE;
+    }
+    if (doit) {
+	nssTrustDomain_UpdateCachedTokenCerts(slot->token->trustDomain, 
+	                                      slot->token);
     }
     return nssToken_Refresh(slot->token);
 }
@@ -225,6 +257,17 @@ nssToken_GetTrustOrder
     return module->trustOrder;
 }
 
+NSS_IMPLEMENT PRBool
+nssSlot_IsLoggedIn
+(
+  NSSSlot *slot
+)
+{
+    if (!slot->pk11slot->needLogin) {
+	return PR_TRUE;
+    }
+    return PK11_IsLoggedIn(slot->pk11slot, NULL);
+}
 
 
 NSSTrustDomain *
@@ -233,25 +276,19 @@ nssToken_GetTrustDomain(NSSToken *token)
     return token->trustDomain;
 }
 
-typedef enum {
-    nssPK11Event_DefaultSessionRO = 0,
-    nssPK11Event_DefaultSessionRW = 1
-} nssPK11Event;
+NSS_EXTERN PRStatus
+nssTrustDomain_RemoveTokenCertsFromCache
+(
+  NSSTrustDomain *td,
+  NSSToken *token
+);
 
 NSS_IMPLEMENT PRStatus
-nssToken_Nofify
+nssToken_NotifyCertsNotVisible
 (
-  NSSToken *tok,
-  nssPK11Event event
+  NSSToken *tok
 )
-
 {
-#ifdef notdef
-    switch (event) {
-    default:
-	return PR_FAILURE;
-    }
-#endif
-    return PR_FAILURE;
+    return nssTrustDomain_RemoveTokenCertsFromCache(tok->trustDomain, tok);
 }
 

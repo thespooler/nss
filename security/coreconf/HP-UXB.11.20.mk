@@ -1,4 +1,4 @@
-# 
+#
 # The contents of this file are subject to the Mozilla Public
 # License Version 1.1 (the "License"); you may not use this file
 # except in compliance with the License. You may obtain a copy of
@@ -13,7 +13,7 @@
 # 
 # The Initial Developer of the Original Code is Netscape
 # Communications Corporation.  Portions created by Netscape are 
-# Copyright (C) 1994-2000 Netscape Communications Corporation.  All
+# Copyright (C) 2002 Netscape Communications Corporation.  All
 # Rights Reserved.
 # 
 # Contributor(s):
@@ -30,25 +30,26 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-MAKEFILE_CVS_ID = "@(#) $RCSfile$ $Revision$ $Date$ $Name$"
-
-include manifest.mn
-include $(CORE_DEPTH)/coreconf/config.mk
-include config.mk
-include $(CORE_DEPTH)/coreconf/rules.mk
-
-# This'll need some help from a build person.
-
-# The generated files are checked in, and differ from what ckapi.perl
-# will produce.  ckapi.perl is currently newer than the targets, so
-# these rules are invoked, causing the wrong files to be generated.
-# Turning off to fix builds.
+# On HP-UX 10.30 and 11.x, the default implementation strategy is
+# pthreads.  Classic nspr and pthreads-user are also available.
 #
-# nssckepv.h: ck.api ckapi.perl
-# nssckft.h: ck.api ckapi.perl
-# nssckg.h: ck.api ckapi.perl
-# nssck.api: ck.api ckapi.perl
-# 	perl ckapi.perl ck.api
 
-export:: private_export
+ifeq ($(OS_RELEASE),B.11.20)
+OS_CFLAGS		+= -DHPUX10
+DEFAULT_IMPL_STRATEGY = _PTH
+endif
 
+#
+# To use the true pthread (kernel thread) library on 10.30 and
+# 11.x, we should define _POSIX_C_SOURCE to be 199506L.
+# The _REENTRANT macro is deprecated.
+#
+
+ifdef USE_PTHREADS
+	OS_CFLAGS	+= -D_POSIX_C_SOURCE=199506L
+endif
+
+#
+# Config stuff for HP-UXB.11.x.
+#
+include $(CORE_DEPTH)/coreconf/HP-UXB.11.mk

@@ -377,6 +377,7 @@ nssSlot_CreateSession
  * nssToken_FindTrustObjects
  * nssToken_FindTrustForCertificate
  * nssToken_FindCRLs
+ * nssToken_FindCRLsBySubject
  * nssToken_FindPrivateKeys
  * nssToken_FindPrivateKeyByID
  * nssToken_Digest
@@ -433,6 +434,7 @@ nssToken_ImportCertificate
   NSSDER *issuer,
   NSSDER *subject,
   NSSDER *serial,
+  NSSASCII7 *emailAddr,
   PRBool asTokenObject
 );
 
@@ -571,6 +573,17 @@ nssToken_FindCRLs
 (
   NSSToken *token,
   nssSession *sessionOpt,
+  nssTokenSearchType searchType,
+  PRUint32 maximumOpt,
+  PRStatus *statusOpt
+);
+
+NSS_EXTERN nssCryptokiObject **
+nssToken_FindCRLsBySubject
+(
+  NSSToken *token,
+  nssSession *sessionOpt,
+  NSSDER *subject,
   nssTokenSearchType searchType,
   PRUint32 maximumOpt,
   PRStatus *statusOpt
@@ -740,9 +753,23 @@ nssCryptokiCRL_GetAttributes
   nssCryptokiObject *crlObject,
   nssSession *sessionOpt,
   NSSArena *arenaOpt,
-  NSSItem *crl,
-  NSSItem *krl,
-  NSSItem *url
+  NSSItem *encodingOpt,
+  NSSUTF8 **urlOpt,
+  PRBool *isKRLOpt
+);
+
+/* I'm including this to handle import of certificates in NSS 3.5.  This
+ * function will set the cert-related attributes of a key, in order to
+ * associate it with a cert.  Does it stay like this for 4.0?
+ */
+NSS_EXTERN PRStatus
+nssCryptokiPrivateKey_SetCertificate
+(
+  nssCryptokiObject *keyObject,
+  nssSession *sessionOpt,
+  NSSUTF8 *nickname,
+  NSSItem *id,
+  NSSDER *subject
 );
 
 NSS_EXTERN void
@@ -915,33 +942,25 @@ nssToken_GetDefaultSession
 );
 
 NSS_EXTERN PRStatus
-nssToken_SetTrustCache
-(
-  NSSToken *tok
-);
-
-NSS_EXTERN PRStatus
-nssToken_SetCrlCache
-(
-  NSSToken *tok
-);
-
-NSS_EXTERN PRBool
-nssToken_HasCrls
-(
-  NSSToken *tok
-);
-
-NSS_EXTERN PRStatus
-nssToken_SetHasCrls
-(
-  NSSToken *tok
-);
-
-NSS_EXTERN PRStatus
 nssToken_GetTrustOrder
 (
   NSSToken *tok
+);
+
+NSS_EXTERN PRStatus
+nssToken_NotifyCertsNotVisible
+(
+  NSSToken *tok
+);
+
+NSS_EXTERN PRStatus
+nssToken_TraverseCertificates
+(
+  NSSToken *token,
+  nssSession *sessionOpt,
+  nssTokenSearchType searchType,
+  PRStatus (* callback)(nssCryptokiObject *instance, void *arg),
+  void *arg
 );
 
 #endif

@@ -194,6 +194,13 @@ nssTrustDomain_FindCertificatesByID
   NSSArena *arenaOpt
 );
 
+NSS_EXTERN NSSCRL **
+nssTrustDomain_FindCRLsBySubject
+(
+  NSSTrustDomain *td,
+  NSSDER *subject
+);
+
 /* module-private nsspki methods */
 
 NSS_EXTERN NSSCryptoContext *
@@ -243,10 +250,41 @@ nssTrust_Create
   nssPKIObject *object
 );
 
+NSS_EXTERN NSSCRL *
+nssCRL_Create
+(
+  nssPKIObject *object
+);
+
+NSS_EXTERN NSSCRL *
+nssCRL_AddRef
+(
+  NSSCRL *crl
+);
+
+NSS_EXTERN PRStatus
+nssCRL_Destroy
+(
+  NSSCRL *crl
+);
+
+NSS_EXTERN PRStatus
+nssCRL_DeleteStoredObject
+(
+  NSSCRL *crl,
+  NSSCallback *uhh
+);
+
 NSS_EXTERN NSSPrivateKey *
 nssPrivateKey_Create
 (
   nssPKIObject *o
+);
+
+NSS_EXTERN NSSDER *
+nssCRL_GetEncoding
+(
+  NSSCRL *crl
 );
 
 NSS_EXTERN NSSPublicKey *
@@ -320,6 +358,12 @@ nssCertificateArray_Traverse
   void *arg
 );
 
+NSS_EXTERN void
+nssCRLArray_Destroy
+(
+  NSSCRL **crls
+);
+
 /* nssPKIObjectCollection
  *
  * This is a handy way to group objects together and perform operations
@@ -348,6 +392,7 @@ nssCertificateArray_Traverse
  * Back to type-specific methods.
  *
  * nssPKIObjectCollection_GetCertificates
+ * nssPKIObjectCollection_GetCRLs
  * nssPKIObjectCollection_GetPrivateKeys
  * nssPKIObjectCollection_GetPublicKeys
  */
@@ -362,6 +407,18 @@ nssCertificateCollection_Create
 (
   NSSTrustDomain *td,
   NSSCertificate **certsOpt
+);
+
+/* nssCRLCollection_Create
+ *
+ * Create a collection of CRLs/KRLs in the specified trust domain.
+ * Optionally provide a starting set of CRLs.
+ */
+NSS_EXTERN nssPKIObjectCollection *
+nssCRLCollection_Create
+(
+  NSSTrustDomain *td,
+  NSSCRL **crlsOpt
 );
 
 /* nssPrivateKeyCollection_Create
@@ -439,6 +496,18 @@ nssPKIObjectCollection_Traverse
   nssPKIObjectCallback *callback
 );
 
+/* This function is being added for NSS 3.5.  It corresponds to the function
+ * nssToken_TraverseCertificates.  The idea is to use the collection during
+ * a traversal, creating certs each time a new instance is added for which
+ * a cert does not already exist.
+ */
+NSS_EXTERN PRStatus
+nssPKIObjectCollection_AddInstanceAsObject
+(
+  nssPKIObjectCollection *collection,
+  nssCryptokiObject *instance
+);
+
 /* nssPKIObjectCollection_GetCertificates
  *
  * Get all of the certificates in the collection. 
@@ -448,6 +517,15 @@ nssPKIObjectCollection_GetCertificates
 (
   nssPKIObjectCollection *collection,
   NSSCertificate **rvOpt,
+  PRUint32 maximumOpt,
+  NSSArena *arenaOpt
+);
+
+NSS_EXTERN NSSCRL **
+nssPKIObjectCollection_GetCRLs
+(
+  nssPKIObjectCollection *collection,
+  NSSCRL **rvOpt,
   PRUint32 maximumOpt,
   NSSArena *arenaOpt
 );
@@ -539,6 +617,13 @@ nssTrustDomain_DestroyCache
  */
 NSS_EXTERN PRStatus
 nssTrustDomain_RemoveTokenCertsFromCache
+(
+  NSSTrustDomain *td,
+  NSSToken *token
+);
+
+NSS_EXTERN PRStatus
+nssTrustDomain_UpdateCachedTokenCerts
 (
   NSSTrustDomain *td,
   NSSToken *token

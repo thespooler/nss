@@ -109,7 +109,7 @@ token_destructor(void *t)
     NSSToken *tok = (NSSToken *)t;
     /* in 3.4, also destroy the slot (managed separately) */
     (void)nssSlot_Destroy(tok->slot);
-    STAN_DestroyNSSToken(tok);
+    nssToken_Destroy(tok);
 }
 
 NSS_IMPLEMENT PRStatus
@@ -285,8 +285,10 @@ NSSTrustDomain_FindTokenByName
          tok != (NSSToken *)NULL;
          tok  = (NSSToken *)nssListIterator_Next(td->tokens))
     {
-	myName = nssToken_GetName(tok);
-	if (nssUTF8_Equal(tokenName, myName, &nssrv)) break;
+	if (nssToken_IsPresent(tok)) {
+	    myName = nssToken_GetName(tok);
+	    if (nssUTF8_Equal(tokenName, myName, &nssrv)) break;
+	}
     }
     nssListIterator_Finish(td->tokens);
     return tok;
@@ -1033,8 +1035,96 @@ NSSTrustDomain_FindUserCertificatesForEmailSigning
     return NULL;
 }
 
+static PRStatus
+collector(nssCryptokiObject *instance, void *arg)
+{
+    nssPKIObjectCollection *collection = (nssPKIObjectCollection *)arg;
+    return nssPKIObjectCollection_AddInstanceAsObject(collection, instance);
+}
+
 NSS_IMPLEMENT PRStatus *
 NSSTrustDomain_TraverseCertificates
+(
+  NSSTrustDomain *td,
+  PRStatus (*callback)(NSSCertificate *c, void *arg),
+  void *arg
+)
+{
+    PRStatus status;
+    NSSToken *token = NULL;
+    NSSSlot **slots = NULL;
+    NSSSlot **slotp;
+    nssPKIObjectCollection *collection = NULL;
+    nssPKIObjectCallback pkiCallback;
+    nssUpdateLevel updateLevel;
+    NSSCertificate **cached = NULL;
+    nssList *certList;
+
+    certList = nssList_Create(NULL, PR_FALSE);
+    if (!certList) return NULL;
+    (void *)nssTrustDomain_GetCertsFromCache(td, certList);
+    cached = get_certs_from_list(certList);
+    collection = nssCertificateCollection_Create(td, cached);
+    nssCertificateArray_Destroy(cached);
+    nssList_Destroy(certList);
+    if (!collection) {
+	return (PRStatus *)NULL;
+    }
+    /* obtain the current set of active slots in the trust domain */
+    slots = nssTrustDomain_GetActiveSlots(td, &updateLevel);
+    if (!slots) {
+	goto loser;
+    }
+    /* iterate over the slots */
+    for (slotp = slots; *slotp; slotp++) {
+	/* get the token for the slot, if present */
+	token = nssSlot_GetToken(*slotp);
+	if (token) {
+	    nssSession *session;
+	    nssTokenSearchType tokenOnly = nssTokenSearchType_TokenOnly;
+	    /* get a session for the token */
+	    session = nssTrustDomain_GetSessionForToken(td, token);
+	    if (!session) {
+		nssToken_Destroy(token);
+		goto loser;
+	    }
+	    /* perform the traversal */
+	    status = nssToken_TraverseCertificates(token,
+	                                           session,
+	                                           tokenOnly,
+	                                           collector,
+	                                           collection);
+	    nssToken_Destroy(token);
+	    if (status != PR_SUCCESS) {
+		goto loser;
+	    }
+	}
+    }
+
+    /* Traverse the collection */
+    pkiCallback.func.cert = callback;
+    pkiCallback.arg = arg;
+    status = nssPKIObjectCollection_Traverse(collection, &pkiCallback);
+    /* clean up */
+    nssPKIObjectCollection_Destroy(collection);
+    nssSlotArray_Destroy(slots);
+    return NULL;
+loser:
+    if (slots) {
+	nssSlotArray_Destroy(slots);
+    }
+    if (collection) {
+	nssPKIObjectCollection_Destroy(collection);
+    }
+    return NULL;
+}
+
+#ifdef notdef
+/*
+ * search for Public and Private keys first
+ */
+NSS_IMPLEMENT PRStatus *
+NSSTrustDomain_TraverseUserCertificates
 (
   NSSTrustDomain *td,
   PRStatus (*callback)(NSSCertificate *c, void *arg),
@@ -1080,10 +1170,17 @@ NSSTrustDomain_TraverseCertificates
 		goto loser;
 	    }
 	    /* perform the traversal */
-	    instances = nssToken_FindCertificates(token,
+	    if (!isLoggedIn(tok)) {
+	    	instances = nssToken_FindPublicKeys(token,
 	                                          session,
 	                                          tokenOnly,
 	                                          0, &status);
+	    } else {
+	    	instances = nssToken_FindPrivateKeys(token,
+	                                          session,
+	                                          tokenOnly,
+	                                          0, &status);
+	    }
 	    nssToken_Destroy(token);
 	    if (status != PR_SUCCESS) {
 		goto loser;
@@ -1096,6 +1193,10 @@ NSSTrustDomain_TraverseCertificates
 		goto loser;
 	    }
 	}
+    }
+    status = nssPKIObjectCollection_MatchCerts(collection);
+    if (status != PR_SUCCESS) {
+	goto loser;
     }
     /* Traverse the collection */
     pkiCallback.func.cert = callback;
@@ -1114,6 +1215,7 @@ loser:
     }
     return NULL;
 }
+#endif
 
 NSS_IMPLEMENT NSSTrust *
 nssTrustDomain_FindTrustForCertificate
@@ -1136,25 +1238,27 @@ nssTrustDomain_FindTrustForCertificate
     }
     for (slotp = slots; *slotp; slotp++) {
 	token = nssSlot_GetToken(*slotp);
-	to = nssToken_FindTrustForCertificate(token, NULL, 
-	                                      &c->encoding,
-	                                      &c->issuer,
-	                                      &c->serial,
+	if (token) {
+	    to = nssToken_FindTrustForCertificate(token, NULL, 
+	                                          &c->encoding,
+	                                          &c->issuer,
+	                                          &c->serial,
 	                                      nssTokenSearchType_TokenOnly);
-	if (to) {
-	    if (!pkio) {
-		pkio = nssPKIObject_Create(NULL, to, td, NULL);
+	    if (to) {
 		if (!pkio) {
-		    goto loser;
-		}
-	    } else {
-		status = nssPKIObject_AddInstance(pkio, to);
-		if (status != PR_SUCCESS) {
-		    goto loser;
+		    pkio = nssPKIObject_Create(NULL, to, td, NULL);
+		    if (!pkio) {
+			goto loser;
+		    }
+		} else {
+		    status = nssPKIObject_AddInstance(pkio, to);
+		    if (status != PR_SUCCESS) {
+			goto loser;
+		    }
 		}
 	    }
+	    nssToken_Destroy(token);
 	}
-	nssToken_Destroy(token);
     }
     if (pkio) {
 	rvt = nssTrust_Create(pkio);
@@ -1173,6 +1277,66 @@ loser:
 	nssPKIObject_Destroy(pkio);
     }
     return (NSSTrust *)NULL;
+}
+
+NSS_IMPLEMENT NSSCRL **
+nssTrustDomain_FindCRLsBySubject
+(
+  NSSTrustDomain *td,
+  NSSDER *subject
+)
+{
+    PRStatus status;
+    NSSSlot **slots;
+    NSSSlot **slotp;
+    NSSToken *token;
+    nssUpdateLevel updateLevel;
+    nssPKIObjectCollection *collection;
+    NSSCRL **rvCRLs = NULL;
+    collection = nssCRLCollection_Create(td, NULL);
+    if (!collection) {
+	return (NSSCRL **)NULL;
+    }
+    slots = nssTrustDomain_GetActiveSlots(td, &updateLevel);
+    if (!slots) {
+	goto loser;
+    }
+    for (slotp = slots; *slotp; slotp++) {
+	token = nssSlot_GetToken(*slotp);
+	if (token) {
+	    nssSession *session;
+	    nssCryptokiObject **instances;
+	    nssTokenSearchType tokenOnly = nssTokenSearchType_TokenOnly;
+	    /* get a session for the token */
+	    session = nssTrustDomain_GetSessionForToken(td, token);
+	    if (!session) {
+		nssToken_Destroy(token);
+		goto loser;
+	    }
+	    /* perform the traversal */
+	    instances = nssToken_FindCRLsBySubject(token, session, subject,
+	                                           tokenOnly, 0, &status);
+	    nssToken_Destroy(token);
+	    if (status != PR_SUCCESS) {
+		goto loser;
+	    }
+	    /* add the found CRL's to the collection */
+	    status = nssPKIObjectCollection_AddInstances(collection, 
+	                                                 instances, 0);
+	    nss_ZFreeIf(instances);
+	    if (status != PR_SUCCESS) {
+		goto loser;
+	    }
+	}
+    }
+    rvCRLs = nssPKIObjectCollection_GetCRLs(collection, NULL, 0, NULL);
+    nssPKIObjectCollection_Destroy(collection);
+    nssSlotArray_Destroy(slots);
+    return rvCRLs;
+loser:
+    nssPKIObjectCollection_Destroy(collection);
+    nssSlotArray_Destroy(slots);
+    return (NSSCRL **)NULL;
 }
 
 NSS_IMPLEMENT PRStatus
