@@ -2362,17 +2362,17 @@ pk11_SlotFromSessionHandle(CK_SESSION_HANDLE handle)
     return pk11_SlotFromID(nscSlotList[moduleIndex][slotIDIndex]);
 }
  
-PK11Slot * pk11_NewSlotFromID(CK_SLOT_ID slotID, int moduleIndex)
+static CK_RV
+pk11_RegisterSlot(PK11Slot *slot, int moduleIndex)
 {
-    PK11Slot *slot = NULL;
     PLHashEntry *entry;
     int index;
 
-    index = pk11_GetModuleIndex(slotID);
+    index = pk11_GetModuleIndex(slot->slotID);
 
     /* make sure the slotID for this module is valid */
     if (moduleIndex != index) {
-	return NULL;
+	return CKR_SLOT_ID_INVALID;
     }
 
     if (nscSlotList[index] == NULL) {
@@ -2380,7 +2380,7 @@ PK11Slot * pk11_NewSlotFromID(CK_SLOT_ID slotID, int moduleIndex)
 	nscSlotList[index] = (CK_SLOT_ID *)
 		PORT_ZAlloc(nscSlotListSize[index]*sizeof(CK_SLOT_ID));
 	if (nscSlotList[index] == NULL) {
-	    return NULL;
+	    return CKR_HOST_MEMORY;
 	}
     }
     if (nscSlotCount[index] >= nscSlotListSize[index]) {
@@ -2392,7 +2392,7 @@ PK11Slot * pk11_NewSlotFromID(CK_SLOT_ID slotID, int moduleIndex)
 	if (nscSlotList[index] == NULL) {
             nscSlotList[index] = oldNscSlotList;
             nscSlotListSize[index] = oldNscSlotListSize;
-            return NULL;
+            return CKR_HOST_MEMORY;
 	}
     }
 
@@ -2400,24 +2400,18 @@ PK11Slot * pk11_NewSlotFromID(CK_SLOT_ID slotID, int moduleIndex)
 	nscSlotHashTable[index] = PL_NewHashTable(64,pk11_HashNumber,
 				PL_CompareValues, PL_CompareValues, NULL, 0);
 	if (nscSlotHashTable[index] == NULL) {
-	    return NULL;
+	    return CKR_HOST_MEMORY;
 	}
     }
 
-    slot = (PK11Slot *) PORT_ZAlloc(sizeof(PK11Slot));
-    if (slot == NULL) {
-	return NULL;
-    }
-
-    entry = PL_HashTableAdd(nscSlotHashTable[index],(void *)slotID,slot);
+    entry = PL_HashTableAdd(nscSlotHashTable[index],(void *)slot->slotID,slot);
     if (entry == NULL) {
-	PORT_Free(slot);
-	return NULL;
+	return CKR_HOST_MEMORY;
     }
     slot->index = (nscSlotCount[index] & 0x7f) | ((index << 7) & 0x80);
-    nscSlotList[index][nscSlotCount[index]++] = slotID;
+    nscSlotList[index][nscSlotCount[index]++] = slot->slotID;
 
-    return slot;
+    return CKR_OK;
 }
 
 static SECStatus
@@ -2455,6 +2449,9 @@ pk11_DBVerify(PK11Slot *slot)
     return;
 }
 
+/* forward static declaration. */
+static CK_RV pk11_DestroySlotData(PK11Slot *slot);
+
 /*
  * initialize one of the slot structures. figure out which by the ID
  */
@@ -2463,7 +2460,7 @@ PK11_SlotInit(char *configdir,pk11_token_parameters *params, int moduleIndex)
 {
     unsigned int i;
     CK_SLOT_ID slotID = params->slotID;
-    PK11Slot *slot = pk11_NewSlotFromID(slotID, moduleIndex);
+    PK11Slot *slot = PORT_ZNew(PK11Slot);
     PRBool needLogin = !params->noKeyDB;
     CK_RV crv;
 
@@ -2485,47 +2482,40 @@ PK11_SlotInit(char *configdir,pk11_token_parameters *params, int moduleIndex)
 
 #ifdef PKCS11_USE_THREADS
     slot->slotLock = PZ_NewLock(nssILockSession);
-    if (slot->slotLock == NULL) {
-	return CKR_HOST_MEMORY;
-    }
-    slot->sessionLock = (PZLock **)
-			PORT_ZAlloc(slot->numSessionLocks * sizeof(PZLock *));
-    if (slot->sessionLock == NULL) {
-	return CKR_HOST_MEMORY;
-    }
+    if (slot->slotLock == NULL)
+	goto mem_loser;
+    slot->sessionLock = PORT_ZNewArray(PZLock *, slot->numSessionLocks);
+    if (slot->sessionLock == NULL)
+	goto mem_loser;
     for (i=0; i < slot->numSessionLocks; i++) {
         slot->sessionLock[i] = PZ_NewLock(nssILockSession);
-        if (slot->sessionLock[i] == NULL) return CKR_HOST_MEMORY;
+        if (slot->sessionLock[i] == NULL) 
+	    goto mem_loser;
     }
     slot->objectLock = PZ_NewLock(nssILockObject);
-    if (slot->objectLock == NULL) return CKR_HOST_MEMORY;
+    if (slot->objectLock == NULL) 
+    	goto mem_loser;
 #else
     slot->slotLock = NULL;
-    slot->sessionLock = (PZLock **)
-			PORT_ZAlloc(slot->numSessionLocks * sizeof(PZLock *));
-    if (slot->sessionLock == NULL) {
-	return CKR_HOST_MEMORY;
-    }
+    slot->sessionLock = PORT_ZNewArray(PZLock *, slot->numSessionLocks);
+    if (slot->sessionLock == NULL)
+	goto mem_loser;
     for (i=0; i < slot->numSessionLocks; i++) {
         slot->sessionLock[i] = NULL;
     }
     slot->objectLock = NULL;
 #endif
-    slot->head = (PK11Session **)
-		PORT_ZAlloc(slot->sessHashSize*sizeof(PK11Session *));
-    if (slot->head == NULL) {
-	return CKR_HOST_MEMORY;
-    }
-    slot->tokObjects = (PK11Object **)
-		PORT_ZAlloc(slot->tokObjHashSize*sizeof(PK11Object *));
-    if (slot->tokObjects == NULL) {
-	return CKR_HOST_MEMORY;
-    }
+    slot->head = PORT_ZNewArray(PK11Session *, slot->sessHashSize);
+    if (slot->head == NULL) 
+	goto mem_loser;
+    slot->tokObjects = PORT_ZNewArray(PK11Object *, slot->tokObjHashSize);
+    if (slot->tokObjects == NULL) 
+	goto mem_loser;
     slot->tokenHashTable = PL_NewHashTable(64,pk11_HashNumber,PL_CompareValues,
 					SECITEM_HashCompare, NULL, 0);
-    if (slot->tokenHashTable == NULL) {
-	return CKR_HOST_MEMORY;
-    }
+    if (slot->tokenHashTable == NULL) 
+	goto mem_loser;
+
     slot->password = NULL;
     slot->hasTokens = PR_FALSE;
     slot->sessionIDCount = 0;
@@ -2555,8 +2545,7 @@ PK11_SlotInit(char *configdir,pk11_token_parameters *params, int moduleIndex)
 		params->noCertDB, params->noKeyDB, params->forceOpen, 
 						&slot->certDB, &slot->keyDB);
 	if (crv != CKR_OK) {
-	    /* shoutdown slot? */
-	    return crv;
+	    goto loser;
 	}
 
 	if (nsslowcert_needDBVerify(slot->certDB)) {
@@ -2575,7 +2564,17 @@ PK11_SlotInit(char *configdir,pk11_token_parameters *params, int moduleIndex)
 	    slot->minimumPinLen = 1;
 	}
     }
+    crv = pk11_RegisterSlot(slot, moduleIndex);
+    if (crv != CKR_OK) {
+	goto loser;
+    }
     return CKR_OK;
+
+mem_loser:
+    crv = CKR_HOST_MEMORY;
+loser:
+    pk11_DestroySlotData(slot);
+    return crv;
 }
 
 static PRIntn
