@@ -86,8 +86,10 @@ SECStatus
 SEC_DeletePermCertificate(CERTCertificate *cert)
 {
     PRStatus nssrv;
+    NSSTrustDomain *td = STAN_GetDefaultTrustDomain();
     NSSCertificate *c = STAN_GetNSSCertificate(cert);
     nssrv = NSSCertificate_DeleteStoredObject(c, NULL);
+    nssTrustDomain_RemoveCertFromCache(td, c);
     return (nssrv == PR_SUCCESS) ? SECSuccess : SECFailure;
 }
 
@@ -168,17 +170,25 @@ __CERT_AddTempCertToPerm(CERTCertificate *cert, char *nickname,
                                               &c->issuer,
                                               &c->subject,
                                               &c->serial,
+					      cert->emailAddr,
                                               PR_TRUE);
     PK11_FreeSlot(slot);
     if (!permInstance) {
 	return SECFailure;
     }
     nssPKIObject_AddInstance(&c->object, permInstance);
+    nssTrustDomain_AddCertsToCache(STAN_GetDefaultTrustDomain(), &c, 1);
     /* reset the CERTCertificate fields */
     cert->nssCertificate = NULL;
     cert = STAN_GetCERTCertificate(c); /* will return same pointer */
+    if (!cert) {
+        return SECFailure;
+    }
     cert->istemp = PR_FALSE;
     cert->isperm = PR_TRUE;
+    if (!trust) {
+	return PR_SUCCESS;
+    }
     return (STAN_ChangeCertTrust(cert, trust) == PR_SUCCESS) ? 
 							SECSuccess: SECFailure;
 }
@@ -226,11 +236,19 @@ __CERT_NewTempCertificate(CERTCertDBHandle *handle, SECItem *derCert,
 	return NULL;
     }
     c->object = *pkio;
-    NSSITEM_FROM_SECITEM(&c->encoding, derCert);
+    if (copyDER) {
+	nssItem_Create(c->object.arena, &c->encoding, 
+	               derCert->len, derCert->data);
+    } else {
+	NSSITEM_FROM_SECITEM(&c->encoding, derCert);
+    }
     /* Forces a decoding of the cert in order to obtain the parts used
      * below
      */
     cc = STAN_GetCERTCertificate(c);
+    if (!cc) {
+        return NULL;
+    }
     nssItem_Create(c->object.arena, 
                    &c->issuer, cc->derIssuer.len, cc->derIssuer.data);
     nssItem_Create(c->object.arena, 
@@ -274,6 +292,9 @@ __CERT_NewTempCertificate(CERTCertDBHandle *handle, SECItem *derCert,
 	/* and use the "official" entry */
 	c = tempCert;
 	cc = STAN_GetCERTCertificate(c);
+        if (!cc) {
+            return NULL;
+        }
     } else {
 	return NULL;
     }
@@ -342,10 +363,16 @@ CERT_FindCertByName(CERTCertDBHandle *handle, SECItem *name)
     c = get_best_temp_or_perm(ct, cp);
     if (ct) {
 	CERTCertificate *cert = STAN_GetCERTCertificate(ct);
+        if (!cert) {
+            return NULL;
+        }
 	CERT_DestroyCertificate(cert);
     }
     if (cp) {
 	CERTCertificate *cert = STAN_GetCERTCertificate(cp);
+        if (!cert) {
+            return NULL;
+        }
 	CERT_DestroyCertificate(cert);
     }
     if (c) {
@@ -392,6 +419,9 @@ CERT_FindCertByNickname(CERTCertDBHandle *handle, char *nickname)
 	CERT_DestroyCertificate(cert);
 	if (ct) {
 	    CERTCertificate *cert2 = STAN_GetCERTCertificate(ct);
+            if (!cert2) {
+                return NULL;
+            }
 	    CERT_DestroyCertificate(cert2);
 	}
     } else {
@@ -442,6 +472,9 @@ CERT_FindCertByNicknameOrEmailAddr(CERTCertDBHandle *handle, char *name)
 	CERT_DestroyCertificate(cert);
 	if (ct) {
 	    CERTCertificate *cert2 = STAN_GetCERTCertificate(ct);
+            if (!cert2) {
+                return NULL;
+            }
 	    CERT_DestroyCertificate(cert2);
 	}
     } else {
@@ -507,14 +540,18 @@ CERT_CreateSubjectCertList(CERTCertList *certList, CERTCertDBHandle *handle,
     ci = tSubjectCerts;
     while (ci && *ci) {
 	cert = STAN_GetCERTCertificate(*ci);
-	add_to_subject_list(certList, cert, validOnly, sorttime);
+        if (cert) {
+	    add_to_subject_list(certList, cert, validOnly, sorttime);
+        }
 	ci++;
     }
     /* Iterate over the matching perm certs.  Add them to the list */
     ci = pSubjectCerts;
     while (ci && *ci) {
 	cert = STAN_GetCERTCertificate(*ci);
-	add_to_subject_list(certList, cert, validOnly, sorttime);
+        if (cert) {
+	    add_to_subject_list(certList, cert, validOnly, sorttime);
+        }
 	ci++;
     }
     nss_ZFreeIf(tSubjectCerts);
@@ -577,7 +614,9 @@ CERT_DestroyCertificate(CERTCertificate *cert)
 	    }
 	    /* delete the NSSCertificate */
 	    NSSCertificate_Destroy(tmp);
-	} 
+	} else {
+	    PORT_FreeArena(cert->arena, PR_FALSE);
+	}
 #endif
     }
     return;
@@ -862,7 +901,9 @@ CERT_FindSMimeProfile(CERTCertificate *cert)
     }
     rvItem =
 	PK11_FindSMimeProfile(&slot, cert->emailAddr, &cert->derSubject, NULL);
-    PK11_FreeSlot(slot);
+    if (slot) {
+    	PK11_FreeSlot(slot);
+    }
     return rvItem;
 }
 

@@ -53,6 +53,7 @@
 typedef struct NSSLOWCERTCertDBHandleStr               NSSLOWCERTCertDBHandle;
 typedef struct NSSLOWCERTCertKeyStr                    NSSLOWCERTCertKey;
 
+typedef struct NSSLOWCERTTrustStr                      NSSLOWCERTTrust;
 typedef struct NSSLOWCERTCertTrustStr                  NSSLOWCERTCertTrust;
 typedef struct NSSLOWCERTCertificateStr                NSSLOWCERTCertificate;
 typedef struct NSSLOWCERTCertificateListStr            NSSLOWCERTCertificateList;
@@ -107,6 +108,17 @@ struct NSSLOWCERTCertTrustStr {
 };
 
 /*
+** PKCS11 Trust representation
+*/
+struct NSSLOWCERTTrustStr {
+    NSSLOWCERTCertDBHandle *dbhandle;
+    SECItem dbKey;			/* database key for this cert */
+    certDBEntryCert *dbEntry;		/* database entry struct */
+    NSSLOWCERTCertTrust *trust;
+    SECItem *derCert;			/* original DER for the cert */
+};
+
+/*
 ** An X.509 certificate object (the unsigned form)
 */
 struct NSSLOWCERTCertificateStr {
@@ -121,11 +133,13 @@ struct NSSLOWCERTCertificateStr {
 
     SECItem derCert;			/* original DER for the cert */
     SECItem derIssuer;			/* DER for issuer name */
+    SECItem derSN;
     SECItem serialNumber;
     SECItem derSubject;			/* DER for subject name */
-    NSSLOWCERTSubjectPublicKeyInfo subjectPublicKeyInfo;
+    SECItem derSubjKeyInfo;
+    NSSLOWCERTSubjectPublicKeyInfo *subjectPublicKeyInfo;
     SECItem certKey;			/* database key for this cert */
-    NSSLOWCERTValidity validity;
+    SECItem validity;
     certDBEntryCert *dbEntry;		/* database entry struct */
     SECItem subjectKeyID;	/* x509v3 subject key identifier */
     char *nickname;
