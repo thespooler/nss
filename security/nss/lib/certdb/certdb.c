@@ -659,7 +659,9 @@ cert_GetCertType(CERTCertificate *cert)
 	PORT_Free(encodedExtKeyUsage.data);
 	CERT_DestroyOidSequence(extKeyUsage);
     }
-    PR_AtomicSet(&cert->nsCertType, nsCertType);
+    /* Assert that it is safe to cast &cert->nsCertType to "PRInt32 *" */
+    PORT_Assert(sizeof(cert->nsCertType) == sizeof(PRInt32));
+    PR_AtomicSet((PRInt32 *)&cert->nsCertType, nsCertType);
     return(SECSuccess);
 }
 
@@ -1480,7 +1482,7 @@ cert_VerifySubjectAltName(CERTCertificate *cert, const char *hn)
 	default:
 	    break;
 	}
-	current = cert_get_next_general_name(current);
+	current = CERT_GetNextGeneralName(current);
     } while (current != nameList);
 
     if ((!isIPaddr && !DNSextCount) || (isIPaddr && !IPextCount)) {
