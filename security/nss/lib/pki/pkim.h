@@ -248,7 +248,7 @@ NSS_EXTERN NSSTrust *
 nssTrust_Create
 (
   nssPKIObject *object,
-  NSSItem *certData
+  NSSCertificate *nssCert
 );
 
 NSS_EXTERN NSSCRL *
