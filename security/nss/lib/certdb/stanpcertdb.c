@@ -180,12 +180,18 @@ __CERT_NewTempCertificate(CERTCertDBHandle *handle, SECItem *derCert,
     NSSCryptoContext *context;
     NSSArena *arena;
     CERTCertificate *cc;
+    NSSCryptoContext *gCC = STAN_GetDefaultCryptoContext();
     if (!isperm) {
-	/* Look for a perm cert first */
 	NSSDER encoding;
 	NSSITEM_FROM_SECITEM(&encoding, derCert);
-	c = NSSTrustDomain_FindCertificateByEncodedCertificate(handle, 
+	/* First, see if it is already a temp cert */
+	c = NSSCryptoContext_FindCertificateByEncodedCertificate(gCC, 
 	                                                       &encoding);
+	if (!c) {
+	    /* Then, see if it is already a perm cert */
+	    c = NSSTrustDomain_FindCertificateByEncodedCertificate(handle, 
+	                                                           &encoding);
+	}
 	if (c) {
 	    return STAN_GetCERTCertificate(c);
 	}
@@ -284,7 +290,6 @@ get_best_temp_or_perm(NSSCertificate *ct, NSSCertificate *cp)
     if (cp) {
 	nssBestCertificate_Callback(cp, (void *)&best);
     }
-    nss_ZFreeIf(best.time);
     return best.cert;
 }
 
@@ -506,7 +511,6 @@ CERT_DestroyCertificate(CERTCertificate *cert)
 	if (tmp) {
 	    /* delete the NSSCertificate */
 	    PK11SlotInfo *slot = cert->slot;
-	    PRBool freeSlot = cert->ownSlot;
 	    NSSTrustDomain *td = STAN_GetDefaultTrustDomain();
 	    refCount = (int)tmp->object.refCount;
 	    /* This is a hack.  For 3.4, there are persistent references
@@ -531,10 +535,6 @@ CERT_DestroyCertificate(CERTCertificate *cert)
 		refCount = (int)tmp->object.refCount;
 	    }
 	    NSSCertificate_Destroy(tmp);
-	    /* another hack...  the destroy *must* decrement the count */
-	    if (--refCount == 0) {
-		if (freeSlot) PK11_FreeSlot(slot);
-	    }
 	} 
 #endif
     }
@@ -664,7 +664,7 @@ CERT_SaveSMimeProfile(CERTCertificate *cert, SECItem *emailProfile,
     PK11SlotInfo *slot = NULL;
     NSSCertificate *c;
     NSSCryptoContext *cc;
-    nssSMIMEProfile *stanProfile;
+    nssSMIMEProfile *stanProfile = NULL;
     
     emailAddr = cert->emailAddr;
     
