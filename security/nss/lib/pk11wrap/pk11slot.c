@@ -68,6 +68,7 @@ PK11DefaultArrayEntry PK11_DefaultArray[] = {
 	{ "RC2", SECMOD_RC2_FLAG, CKM_RC2_CBC },
 	{ "RC4", SECMOD_RC4_FLAG, CKM_RC4 },
 	{ "DES", SECMOD_DES_FLAG, CKM_DES_CBC },
+	{ "AES", SECMOD_AES_FLAG, CKM_AES_CBC },
 	{ "RC5", SECMOD_RC5_FLAG, CKM_RC5_CBC },
 	{ "SHA-1", SECMOD_SHA1_FLAG, CKM_SHA_1 },
 	{ "MD5", SECMOD_MD5_FLAG, CKM_MD5 },
@@ -84,7 +85,8 @@ int num_pk11_default_mechanisms = sizeof(PK11_DefaultArray) / sizeof(PK11_Defaul
  * These  slotlists are lists of modules which provide default support for
  *  a given algorithm or mechanism.
  */
-static PK11SlotList pk11_desSlotList,
+static PK11SlotList pk11_aesSlotList,
+    pk11_desSlotList,
     pk11_rc4SlotList,
     pk11_rc2SlotList,
     pk11_rc5SlotList,
@@ -122,6 +124,8 @@ static int pk11_MechEntrySize = 0;
  */
 CK_MECHANISM_TYPE wrapMechanismList[] = {
     CKM_DES3_ECB,
+    CKM_CAST5_ECB,
+    CKM_AES_ECB,
     CKM_CAST5_ECB,
     CKM_DES_ECB,
     CKM_KEY_WRAP_LYNKS,
@@ -1148,6 +1152,7 @@ pk11_freeSlotList(PK11SlotList *list)
 SECStatus
 PK11_InitSlotLists(void)
 {
+    pk11_initSlotList(&pk11_aesSlotList);
     pk11_initSlotList(&pk11_desSlotList);
     pk11_initSlotList(&pk11_rc4SlotList);
     pk11_initSlotList(&pk11_rc2SlotList);
@@ -1168,6 +1173,7 @@ PK11_InitSlotLists(void)
 void
 PK11_DestroySlotLists(void)
 {
+    pk11_freeSlotList(&pk11_aesSlotList);
     pk11_freeSlotList(&pk11_desSlotList);
     pk11_freeSlotList(&pk11_rc4SlotList);
     pk11_freeSlotList(&pk11_rc2SlotList);
@@ -1195,6 +1201,9 @@ PK11_GetSlotList(CK_MECHANISM_TYPE type)
         return NULL;
 #endif
     switch (type) {
+    case CKM_AES_CBC:
+    case CKM_AES_ECB:
+	return &pk11_aesSlotList;
     case CKM_DES_CBC:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
@@ -1402,6 +1411,7 @@ PK11_VerifyMechanism(PK11SlotInfo *slot,PK11SlotInfo *intern,
     unsigned char encRef[8];
     int outLenTest,outLenRef;
     int key_size = 0;
+    PRBool verify = PR_FALSE;
     SECStatus rv;
 
     if ((mech == CKM_RC2_CBC) || (mech == CKM_RC2_ECB) || (mech == CKM_RC4)) {
@@ -1440,7 +1450,7 @@ PK11_VerifyMechanism(PK11SlotInfo *slot,PK11SlotInfo *intern,
     if (outLenTest != outLenRef) goto loser;
     if (PORT_Memcmp(encTest, encRef, outLenTest) != 0) goto loser;
 
-    return PR_TRUE;
+    verify = PR_TRUE;
 
 loser:
     if (test) PK11_DestroyContext(test,PR_TRUE);
@@ -1449,7 +1459,7 @@ loser:
     if (reference) PK11_DestroyContext(reference,PR_TRUE);
     if (param) SECITEM_FreeItem(param,PR_TRUE);
 
-    return PR_FALSE;
+    return verify;
 }
 
 /*
@@ -1872,7 +1882,7 @@ pk11_IsPresentCertLoad(PK11SlotInfo *slot, PRBool loadCerts)
     /* removable slots have a flag that says they are present */
     if (!slot->isThreadSafe) PK11_EnterSlotMonitor(slot);
     if (PK11_GETTAB(slot)->C_GetSlotInfo(slot->slotID,&slotInfo) != CKR_OK) {
-        if (!slot->isThreadSafe) PK11_EnterSlotMonitor(slot);
+        if (!slot->isThreadSafe) PK11_ExitSlotMonitor(slot);
 	return PR_FALSE;
     }
     if ((slotInfo.flags & CKF_TOKEN_PRESENT) == 0) {
@@ -2532,6 +2542,13 @@ CK_MECHANISM_TYPE
 PK11_GetKeyType(CK_MECHANISM_TYPE type,unsigned long len)
 {
     switch (type) {
+    case CKM_AES_ECB:
+    case CKM_AES_CBC:
+    case CKM_AES_MAC:
+    case CKM_AES_MAC_GENERAL:
+    case CKM_AES_CBC_PAD:
+    case CKM_AES_KEY_GEN:
+	return CKK_AES;
     case CKM_DES_ECB:
     case CKM_DES_CBC:
     case CKM_DES_MAC:
@@ -2689,6 +2706,12 @@ CK_MECHANISM_TYPE
 PK11_GetKeyGen(CK_MECHANISM_TYPE type)
 {
     switch (type) {
+    case CKM_AES_ECB:
+    case CKM_AES_CBC:
+    case CKM_AES_MAC:
+    case CKM_AES_MAC_GENERAL:
+    case CKM_AES_CBC_PAD:
+	return CKM_AES_KEY_GEN;
     case CKM_DES_ECB:
     case CKM_DES_CBC:
     case CKM_DES_MAC:
@@ -2885,6 +2908,9 @@ PK11_GetBlockSize(CK_MECHANISM_TYPE type,SECItem *params)
     case CKM_SKIPJACK_CFB16:
     case CKM_SKIPJACK_CFB8:
 	return 4;
+    case CKM_AES_ECB:
+    case CKM_AES_CBC:
+    case CKM_AES_CBC_PAD:
     case CKM_BATON_ECB128:
     case CKM_BATON_CBC128:
     case CKM_BATON_COUNTER:
@@ -2919,6 +2945,7 @@ int
 PK11_GetIVLength(CK_MECHANISM_TYPE type)
 {
     switch (type) {
+    case CKM_AES_ECB:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
     case CKM_RC2_ECB:
@@ -2958,6 +2985,9 @@ PK11_GetIVLength(CK_MECHANISM_TYPE type)
     case CKM_CAST3_CBC_PAD:
     case CKM_CAST5_CBC_PAD:
 	return 8;
+    case CKM_AES_CBC:
+    case CKM_AES_CBC_PAD:
+	return 16;
     case CKM_SKIPJACK_CBC64:
     case CKM_SKIPJACK_ECB64:
     case CKM_SKIPJACK_OFB64:
@@ -3008,6 +3038,7 @@ PK11_ParamFromIV(CK_MECHANISM_TYPE type,SECItem *iv)
     param->data = NULL;
     param->len = 0;
     switch (type) {
+    case CKM_AES_ECB:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
     case CKM_RSA_PKCS:
@@ -3071,6 +3102,7 @@ PK11_ParamFromIV(CK_MECHANISM_TYPE type,SECItem *iv)
 	param->data = (unsigned char *) rc5_params;
 	param->len = sizeof(CK_RC5_PARAMS);
 	break;
+    case CKM_AES_CBC:
     case CKM_DES_CBC:
     case CKM_DES3_CBC:
     case CKM_IDEA_CBC:
@@ -3078,6 +3110,7 @@ PK11_ParamFromIV(CK_MECHANISM_TYPE type,SECItem *iv)
     case CKM_CAST_CBC:
     case CKM_CAST3_CBC:
     case CKM_CAST5_CBC:
+    case CKM_AES_CBC_PAD:
     case CKM_DES_CBC_PAD:
     case CKM_DES3_CBC_PAD:
     case CKM_IDEA_CBC_PAD:
@@ -3134,6 +3167,7 @@ PK11_IVFromParam(CK_MECHANISM_TYPE type,SECItem *param,int *len)
 
     *len = 0;
     switch (type) {
+    case CKM_AES_ECB:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
     case CKM_RSA_PKCS:
@@ -3158,6 +3192,7 @@ PK11_IVFromParam(CK_MECHANISM_TYPE type,SECItem *param,int *len)
 	rc5_cbc_params = (CK_RC5_CBC_PARAMS *) param->data;
 	*len = rc5_cbc_params->ulIvLen;
 	return rc5_cbc_params->pIv;
+    case CKM_AES_CBC:
     case CKM_DES_CBC:
     case CKM_DES3_CBC:
     case CKM_IDEA_CBC:
@@ -3339,7 +3374,8 @@ loser:
 
 /* Generate a mechaism param from a type, and iv. */
 SECItem *
-PK11_ParamFromAlgid(SECAlgorithmID *algid) {
+PK11_ParamFromAlgid(SECAlgorithmID *algid)
+{
     CK_RC2_CBC_PARAMS *rc2_params = NULL;
     CK_RC2_PARAMS *rc2_ecb_params = NULL;
     CK_RC5_CBC_PARAMS *rc5_params_cbc;
@@ -3490,6 +3526,7 @@ PK11_ParamFromAlgid(SECAlgorithmID *algid) {
     rv = SECSuccess;
     switch (type) {
     case CKM_RC4:
+    case CKM_AES_ECB:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
     case CKM_IDEA_ECB:
@@ -3506,6 +3543,7 @@ PK11_ParamFromAlgid(SECAlgorithmID *algid) {
 	    mech->len = 0;
 	    break;
 	}
+    case CKM_AES_CBC:
     case CKM_DES_CBC:
     case CKM_DES3_CBC:
     case CKM_IDEA_CBC:
@@ -3513,6 +3551,7 @@ PK11_ParamFromAlgid(SECAlgorithmID *algid) {
     case CKM_CAST_CBC:
     case CKM_CAST3_CBC:
     case CKM_CAST5_CBC:
+    case CKM_AES_CBC_PAD:
     case CKM_DES_CBC_PAD:
     case CKM_DES3_CBC_PAD:
     case CKM_IDEA_CBC_PAD:
@@ -3665,6 +3704,7 @@ PK11_GenerateNewParam(CK_MECHANISM_TYPE type, PK11SymKey *key) {
     rv = SECSuccess;
     switch (type) {
     case CKM_RC4:
+    case CKM_AES_ECB:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
     case CKM_IDEA_ECB:
@@ -3725,6 +3765,7 @@ PK11_GenerateNewParam(CK_MECHANISM_TYPE type, PK11SymKey *key) {
 	    mech->len = 0;
 	    break;
 	}
+    case CKM_AES_CBC:
     case CKM_DES_CBC:
     case CKM_DES3_CBC:
     case CKM_IDEA_CBC:
@@ -3796,6 +3837,7 @@ PK11_ParamToAlgid(SECOidTag algTag, SECItem *param,
     rv = SECSuccess;
     switch (type) {
     case CKM_RC4:
+    case CKM_AES_ECB:
     case CKM_DES_ECB:
     case CKM_DES3_ECB:
     case CKM_IDEA_ECB:
@@ -3876,6 +3918,7 @@ PK11_ParamToAlgid(SECOidTag algTag, SECItem *param,
 	    newParams = NULL;
 	    break;
 	}
+    case CKM_AES_CBC:
     case CKM_DES_CBC:
     case CKM_DES3_CBC:
     case CKM_IDEA_CBC:
@@ -3949,6 +3992,8 @@ PK11_MechanismToAlgtag(CK_MECHANISM_TYPE type) {
 CK_MECHANISM_TYPE
 PK11_GetPadMechanism(CK_MECHANISM_TYPE type) {
     switch(type) {
+	case CKM_AES_CBC:
+	    return CKM_AES_CBC_PAD;
 	case CKM_DES_CBC:
 	    return CKM_DES_CBC_PAD;
 	case CKM_DES3_CBC:

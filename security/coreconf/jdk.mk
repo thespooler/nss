@@ -256,6 +256,7 @@ ifeq ($(OS_ARCH), AIX)
 	JAVA_ARCH = aix
 
 	INCLUDES += -I$(JAVA_HOME)/include
+	INCLUDES += -I$(JAVA_HOME)/include/$(JAVA_ARCH)
 
 	# (3) specify "linker" information
 	JAVA_CPU = aix
@@ -384,7 +385,7 @@ endif
 
 # define a default JDK classpath
 ifeq ($(JDK_CLASSPATH),)
-	JDK_CLASSPATH = "$(JAVA_DESTPATH)$(PATH_SEPARATOR)$(JAVA_SOURCEPATH)$(PATH_SEPARATOR)$(JAVA_CLASSES)"
+	JDK_CLASSPATH = '$(JAVA_DESTPATH)$(PATH_SEPARATOR)$(JAVA_SOURCEPATH)$(PATH_SEPARATOR)$(JAVA_CLASSES)'
 endif
 
 # by default, override CLASSPATH environment variable using the JDK classpath option with $(JDK_CLASSPATH)
