@@ -1,9 +1,4 @@
-/*
- *  Simple test driver for MPI library
- *
- *  Test 8: Probabilistic primality tester
- *
- * ***** BEGIN LICENSE BLOCK *****
+/* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Mozilla Public License Version
@@ -16,14 +11,16 @@
  * for the specific language governing rights and limitations under the
  * License.
  *
- * The Original Code is the MPI Arbitrary Precision Integer Arithmetic library.
+ * The Original Code is the Netscape security libraries.
  *
  * The Initial Developer of the Original Code is
- * Michael J. Fromberger.
- * Portions created by the Initial Developer are Copyright (C) 1998
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1994-2000
  * the Initial Developer. All Rights Reserved.
+ * Portions created by Red Hat, Inc, are Copyright (C) 2005
  *
  * Contributor(s):
+ *   Bob Relyea (rrelyea@redhat.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -38,61 +35,25 @@
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
-/* $Id$ */
+/* Library identity and versioning */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <limits.h>
-#include <time.h>
+#include "nssmkey.h"
 
-#define MP_IOFUNC 1
-#include "mpi.h"
+#if defined(DEBUG)
+#define _DEBUG_STRING " (debug)"
+#else
+#define _DEBUG_STRING ""
+#endif
 
-#include "mpprime.h"
-
-int main(int argc, char *argv[])
-{
-  int       ix;
-  mp_digit  num;
-  mp_int    a;
-
-  srand(time(NULL));
-
-  if(argc < 2) {
-    fprintf(stderr, "Usage: %s <a>\n", argv[0]);
-    return 1;
-  }
-
-  printf("Test 8: Probabilistic primality testing\n\n");
-
-  mp_init(&a);
-
-  mp_read_radix(&a, argv[1], 10);
-
-  printf("a = "); mp_print(&a, stdout); fputc('\n', stdout);
-
-  printf("\nChecking for divisibility by small primes ... \n");
-  num = 170;
-  if(mpp_divis_primes(&a, &num) == MP_YES) {
-    printf("it is not prime\n");
-    goto CLEANUP;
-  }
-  printf("Passed that test (not divisible by any small primes).\n");
-
-  for(ix = 0; ix < 10; ix++) {
-    printf("\nPerforming Rabin-Miller test, iteration %d\n", ix + 1);
-
-    if(mpp_pprime(&a, 5) == MP_NO) {
-      printf("it is not prime\n");
-      goto CLEANUP;
-    }
-  }
-  printf("All tests passed; a is probably prime\n");
-
-CLEANUP:
-  mp_clear(&a);
-
-  return 0;
-}
+/*
+ * Version information for the 'ident' and 'what commands
+ *
+ * NOTE: the first component of the concatenated rcsid string
+ * must not end in a '$' to prevent rcs keyword substitution.
+ */
+const char __nss_ckmk_rcsid[] = "$Header: NSS Access to the MAC OS X Key Ring "
+        NSS_CKMK_LIBRARY_VERSION _DEBUG_STRING
+        "  " __DATE__ " " __TIME__ " $";
+const char __nss_ckmk_sccsid[] = "@(#)NSS Access to the MAC OS X Key Ring "
+        NSS_CKMK_LIBRARY_VERSION _DEBUG_STRING
+        "  " __DATE__ " " __TIME__;
