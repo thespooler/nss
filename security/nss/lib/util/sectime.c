@@ -41,8 +41,6 @@
 #include "secitem.h"
 #include "secerr.h"
 
-static const PRTime January1st2050  = LL_INIT(0x0008f81e, 0x1b098000);
-
 const SEC_ASN1Template CERT_TimeChoiceTemplate[] = {
   { SEC_ASN1_CHOICE, offsetof(SECItem, type), 0, sizeof(SECItem) },
   { SEC_ASN1_UTC_TIME, 0, 0, siUTCTime },
@@ -61,6 +59,8 @@ const SEC_ASN1Template CERT_ValidityTemplate[] = {
 	  offsetof(CERTValidity,notAfter), CERT_TimeChoiceTemplate, 0 },
     { 0 }
 };
+
+PRTime January1st2050 = LL_INIT(0x0008f81e,0x1b098000);
 
 static char *DecodeUTCTime2FormattedAscii (SECItem *utcTimeDER, char *format);
 static char *DecodeGeneralizedTime2FormattedAscii (SECItem *generalizedTimeDER, char *format);
@@ -116,10 +116,6 @@ CERT_CreateValidity(int64 notBefore, int64 notAfter)
     int rv;
     PRArenaPool *arena;
 
-    if (notBefore > notAfter) {
-       PORT_SetError(SEC_ERROR_INVALID_ARGS);
-       return NULL;
-    }
     arena = PORT_NewArena(DER_DEFAULT_CHUNKSIZE);
     
     if ( !arena ) {

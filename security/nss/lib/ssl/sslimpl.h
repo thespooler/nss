@@ -721,7 +721,6 @@ const ssl3CipherSuiteDef *suite_def;
     PRBool                usedStepDownKey;  /* we did a server key exchange. */
     sslBuffer             msgState;    /* current state for handshake messages*/
                                        /* protected by recvBufLock */
-    sslBuffer             messages;    /* Accumulated handshake messages */
 #ifdef NSS_ENABLE_ECC
     PRUint32              negotiatedECCurves; /* bit mask */
 #endif /* NSS_ENABLE_ECC */
@@ -1049,7 +1048,6 @@ const unsigned char *  preferredCipher;
 extern NSSRWLock *             ssl_global_data_lock;
 extern char                    ssl_debug;
 extern char                    ssl_trace;
-extern FILE *                  ssl_trace_iob;
 extern CERTDistNames *         ssl3_server_ca_list;
 extern PRUint32                ssl_sid_timeout;
 extern PRUint32                ssl3_sid_timeout;
@@ -1145,8 +1143,6 @@ extern SECStatus ssl2_BeginServerHandshake(sslSocket *ss);
 extern int       ssl_Do1stHandshake(sslSocket *ss);
 
 extern SECStatus sslBuffer_Grow(sslBuffer *b, unsigned int newLen);
-extern SECStatus sslBuffer_Append(sslBuffer *b, const void * data, 
-		                  unsigned int len);
 
 extern void      ssl2_UseClearSendFunc(sslSocket *ss);
 extern void      ssl_ChooseSessionIDProcs(sslSecurityInfo *sec);

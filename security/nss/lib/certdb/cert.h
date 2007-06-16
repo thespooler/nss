@@ -730,6 +730,16 @@ extern SECStatus
 CERT_DecodeCertPackage(char *certbuf, int certlen, CERTImportCertificateFunc f,
 		       void *arg);
 
+/*
+** Pretty print a certificate in HTML
+**	"cert" is the certificate to print
+**	"showImages" controls whether or not to use about:security URLs
+**		for subject and issuer images.  This should only be true
+**		in the browser.
+*/
+extern char *CERT_HTMLCertInfo(CERTCertificate *cert, PRBool showImages,
+			       PRBool showIssuer);
+
 /* 
 ** Returns the value of an AVA.  This was a formerly static 
 ** function that has been exposed due to the need to decode
@@ -1500,8 +1510,8 @@ CERT_UnlockCertTrust(CERTCertificate *cert);
  * results in a NULL being returned (and an appropriate error set).
  */ 
 extern SECItem *
-cert_GetSPKIDigest(PRArenaPool *arena, const CERTCertificate *cert,
-                   SECOidTag digestAlg, SECItem *fill);
+CERT_SPKDigestValueForCert(PRArenaPool *arena, CERTCertificate *cert,
+			   SECOidTag digestAlg, SECItem *fill);
 
 /*
  * fill in nsCertType field of the cert based on the cert extension
