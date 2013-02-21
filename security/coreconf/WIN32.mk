@@ -116,12 +116,7 @@ else # !NS_USE_GCC
 	#
 	ifdef MOZ_PROFILE
 		OPTIMIZER += -Z7
-	endif
-	ifdef MOZ_DEBUG_SYMBOLS
-		OPTIMIZER += -Zi
-	endif
-	ifneq (,$(MOZ_PROFILE)$(MOZ_DEBUG_SYMBOLS))
-		DLLFLAGS += -DEBUG -OPT:REF
+		DLLFLAGS += -DEBUG -DEBUGTYPE:CV
 	endif
     else
 	#
@@ -140,9 +135,9 @@ else # !NS_USE_GCC
 	USERNAME   := $(subst $(SPACE),_,$(USERNAME))
 	USERNAME   := $(subst -,_,$(USERNAME))
 	DEFINES    += -DDEBUG -D_DEBUG -UNDEBUG -DDEBUG_$(USERNAME)
-	DLLFLAGS   += -DEBUG -OUT:"$@"
+	DLLFLAGS   += -DEBUG -DEBUGTYPE:CV -OUT:"$@"
 	# Purify requires /FIXED:NO when linking EXEs.
-	LDFLAGS    += -DEBUG -PDB:NONE /FIXED:NO
+	LDFLAGS    += -DEBUG -DEBUGTYPE:CV -PDB:NONE /FIXED:NO
     endif
 endif # NS_USE_GCC
 
