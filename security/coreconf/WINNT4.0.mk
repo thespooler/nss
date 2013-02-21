@@ -55,11 +55,7 @@ else
 	endif
 endif
 
-OS_DLLFLAGS += -nologo -DLL -SUBSYSTEM:WINDOWS
-ifndef MOZ_DEBUG_SYMBOLS
-	OS_DLLFLAGS += -PDB:NONE
-endif
-
+OS_DLLFLAGS += -nologo -DLL -SUBSYSTEM:WINDOWS -PDB:NONE
 #
 # Win NT needs -GT so that fibers can work
 #
